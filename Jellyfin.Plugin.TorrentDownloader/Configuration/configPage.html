@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Torrent Downloader Settings</title>
+</head>
+<body>
+    <div id="torrentConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="torrentConfigForm">
+                    
+                    <h2>Storage Settings</h2>
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="stagingDirectory">Staging Directory:</label>
+                        <input is="emby-input" type="text" id="stagingDirectory" name="StagingDirectory" />
+                        <div class="fieldDescription">Absolute path where torrents will be downloaded before import</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="storageWarningThreshold">Storage Warning Threshold (GB):</label>
+                        <input is="emby-input" type="number" id="storageWarningThreshold" name="StorageWarningThreshold" min="1" />
+                        <div class="fieldDescription">Warn when available disk space falls below this threshold</div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="removeAfterImport" name="RemoveAfterImport" />
+                            <span>Remove files from staging after successful import</span>
+                        </label>
+                        <div class="fieldDescription">Automatically delete staging files once imported to library</div>
+                    </div>
+
+                    <h2>Performance Settings</h2>
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="maxConcurrentDownloads">Max Concurrent Downloads:</label>
+                        <input is="emby-input" type="number" id="maxConcurrentDownloads" name="MaxConcurrentDownloads" min="1" max="10" />
+                        <div class="fieldDescription">Maximum number of simultaneous downloads</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="maxDownloadSpeed">Max Download Speed (KB/s, 0=unlimited):</label>
+                        <input is="emby-input" type="number" id="maxDownloadSpeed" name="MaxDownloadSpeed" min="0" />
+                        <div class="fieldDescription">Global download speed limit in kilobytes per second</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="maxUploadSpeed">Max Upload Speed (KB/s, 0=unlimited):</label>
+                        <input is="emby-input" type="number" id="maxUploadSpeed" name="MaxUploadSpeed" min="0" />
+                        <div class="fieldDescription">Global upload speed limit in kilobytes per second</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="listenPort">Listen Port:</label>
+                        <input is="emby-input" type="number" id="listenPort" name="ListenPort" min="1024" max="65535" />
+                        <div class="fieldDescription">Port for incoming peer connections</div>
+                    </div>
+
+                    <h2>Protocol Settings</h2>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="enableDHT" name="EnableDHT" />
+                            <span>Enable DHT (Distributed Hash Table)</span>
+                        </label>
+                        <div class="fieldDescription">Enable DHT for trackerless torrents</div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="enablePEX" name="EnablePEX" />
+                            <span>Enable PEX (Peer Exchange)</span>
+                        </label>
+                        <div class="fieldDescription">Allow peers to share information about other peers</div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="enableEncryption" name="EnableEncryption" />
+                            <span>Prefer Encrypted Connections</span>
+                        </label>
+                        <div class="fieldDescription">Prefer encrypted peer connections for privacy</div>
+                    </div>
+
+                    <h2>Import Settings</h2>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="autoImportEnabled" name="AutoImportEnabled" />
+                            <span>Auto-Import Enabled</span>
+                        </label>
+                        <div class="fieldDescription">Automatically import completed downloads into Jellyfin libraries</div>
+                    </div>
+
+                    <br/>
+                    <button is="emby-button" type="submit" class="raised button-submit block">
+                        <span>Save</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        var TorrentConfigPage = {
+            pluginUniqueId: 'a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d'
+        };
+
+        document.querySelector('#torrentConfigPage').addEventListener('pageshow', function() {
+            Dashboard.showLoadingMsg();
+
+            ApiClient.getPluginConfiguration(TorrentConfigPage.pluginUniqueId).then(function(config) {
+                document.querySelector('#stagingDirectory').value = config.StagingDirectory || '/var/lib/jellyfin/torrents/staging';
+                document.querySelector('#maxConcurrentDownloads').value = config.MaxConcurrentDownloads || 3;
+                
+                // Convert bytes to KB for display
+                document.querySelector('#maxDownloadSpeed').value = config.MaxDownloadSpeed ? Math.floor(config.MaxDownloadSpeed / 1024) : 0;
+                document.querySelector('#maxUploadSpeed').value = config.MaxUploadSpeed ? Math.floor(config.MaxUploadSpeed / 1024) : 0;
+                
+                document.querySelector('#enableDHT').checked = config.EnableDHT !== false;
+                document.querySelector('#enablePEX').checked = config.EnablePEX !== false;
+                document.querySelector('#enableEncryption').checked = config.EnableEncryption !== false;
+                document.querySelector('#listenPort').value = config.ListenPort || 6881;
+                document.querySelector('#removeAfterImport').checked = config.RemoveAfterImport === true;
+                document.querySelector('#autoImportEnabled').checked = config.AutoImportEnabled !== false;
+                
+                // Convert bytes to GB for display
+                document.querySelector('#storageWarningThreshold').value = config.StorageWarningThreshold ? Math.floor(config.StorageWarningThreshold / 1073741824) : 10;
+
+                Dashboard.hideLoadingMsg();
+            });
+        });
+
+        document.querySelector('#torrentConfigForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            Dashboard.showLoadingMsg();
+
+            ApiClient.getPluginConfiguration(TorrentConfigPage.pluginUniqueId).then(function(config) {
+                config.StagingDirectory = document.querySelector('#stagingDirectory').value;
+                config.MaxConcurrentDownloads = parseInt(document.querySelector('#maxConcurrentDownloads').value) || 3;
+                
+                // Convert KB to bytes for storage
+                var maxDownloadKB = parseInt(document.querySelector('#maxDownloadSpeed').value) || 0;
+                var maxUploadKB = parseInt(document.querySelector('#maxUploadSpeed').value) || 0;
+                config.MaxDownloadSpeed = maxDownloadKB * 1024;
+                config.MaxUploadSpeed = maxUploadKB * 1024;
+                
+                config.EnableDHT = document.querySelector('#enableDHT').checked;
+                config.EnablePEX = document.querySelector('#enablePEX').checked;
+                config.EnableEncryption = document.querySelector('#enableEncryption').checked;
+                config.ListenPort = parseInt(document.querySelector('#listenPort').value) || 6881;
+                config.RemoveAfterImport = document.querySelector('#removeAfterImport').checked;
+                config.AutoImportEnabled = document.querySelector('#autoImportEnabled').checked;
+                
+                // Convert GB to bytes for storage
+                var thresholdGB = parseInt(document.querySelector('#storageWarningThreshold').value) || 10;
+                config.StorageWarningThreshold = thresholdGB * 1073741824;
+
+                ApiClient.updatePluginConfiguration(TorrentConfigPage.pluginUniqueId, config).then(function(result) {
+                    Dashboard.processPluginConfigurationUpdateResult(result);
+                });
+            });
+
+            return false;
+        });
+    </script>
+</body>
+</html>

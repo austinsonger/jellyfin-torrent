@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Jellyfin.Plugin.TorrentDownloader</RootNamespace>
+    <AssemblyName>Jellyfin.Plugin.TorrentDownloader</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Nullable>enable</Nullable>
+    <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+    <CodeAnalysisRuleSet>../jellyfin.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="10.8.*" />
+    <PackageReference Include="Jellyfin.Model" Version="10.8.*" />
+    <PackageReference Include="MonoTorrent" Version="3.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Configuration\**\*.html" />
+    <EmbeddedResource Include="Web\**\*.html" />
+    <EmbeddedResource Include="Web\**\*.js" />
+    <EmbeddedResource Include="Web\**\*.css" />
+  </ItemGroup>
+
+</Project>
