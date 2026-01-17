@@ -24,6 +24,8 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
     {
         private readonly IDownloadManager _downloadManager;
         private readonly IUserManager _userManager;
+        private readonly IStorageManager? _storageManager;
+        private readonly ILibraryManager _libraryManager;
         private readonly ILogger<TorrentsController> _logger;
 
         /// <summary>
@@ -31,15 +33,21 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
         /// </summary>
         /// <param name="downloadManager">Download manager instance.</param>
         /// <param name="userManager">User manager instance.</param>
+        /// <param name="libraryManager">Library manager instance.</param>
         /// <param name="logger">Logger instance.</param>
+        /// <param name="storageManager">Storage manager instance (optional).</param>
         public TorrentsController(
             IDownloadManager downloadManager,
             IUserManager userManager,
-            ILogger<TorrentsController> logger)
+            ILibraryManager libraryManager,
+            ILogger<TorrentsController> logger,
+            IStorageManager? storageManager = null)
         {
             _downloadManager = downloadManager;
             _userManager = userManager;
+            _libraryManager = libraryManager;
             _logger = logger;
+            _storageManager = storageManager;
         }
 
         /// <summary>
@@ -69,6 +77,12 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
                 _logger.LogInformation("User {UserId} creating download from {Source}", userId, request.TorrentSource);
 
                 var download = await _downloadManager.CreateDownloadAsync(request.TorrentSource, userId);
+                
+                // Set target library if specified
+                if (request.TargetLibraryId.HasValue)
+                {
+                    download.TargetLibraryId = request.TargetLibraryId.Value;
+                }
 
                 return Ok(MapToSummaryResponse(download));
             }
@@ -243,6 +257,133 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
             {
                 _logger.LogError(ex, "Failed to delete download {DownloadId}", id);
                 return StatusCode(StatusCodes.Status500InternalServerError, "Failed to delete download");
+            }
+        }
+
+        /// <summary>
+        /// Gets storage status across all volumes.
+        /// </summary>
+        /// <returns>Storage status information.</returns>
+        [HttpGet("storage/status")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<ActionResult<StorageStatusResponse>> GetStorageStatus()
+        {
+            try
+            {
+                if (_storageManager == null)
+                {
+                    return Ok(new StorageStatusResponse
+                    {
+                        Volumes = new List<VolumeStatusResponse>(),
+                        IsStorageCritical = false,
+                        LastCheckTime = DateTime.UtcNow
+                    });
+                }
+
+                var volumes = await _storageManager.GetAllVolumesStatusAsync();
+                var response = new StorageStatusResponse
+                {
+                    Volumes = volumes.Select(v => new VolumeStatusResponse
+                    {
+                        VolumePath = v.VolumePath,
+                        AvailableBytes = v.AvailableBytes,
+                        TotalBytes = v.TotalBytes,
+                        Status = v.Status.ToString(),
+                        IsStagingVolume = v.IsStagingVolume
+                    }).ToList(),
+                    IsStorageCritical = _storageManager.IsStorageCritical,
+                    LastCheckTime = _storageManager.LastCheckTime
+                };
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get storage status");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Failed to retrieve storage status");
+            }
+        }
+
+        /// <summary>
+        /// Triggers manual cleanup of orphaned and old files.
+        /// </summary>
+        /// <returns>Cleanup result.</returns>
+        [HttpPost("storage/cleanup")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<ActionResult<CleanupResultResponse>> TriggerCleanup()
+        {
+            try
+            {
+                if (_storageManager == null)
+                {
+                    return Ok(new CleanupResultResponse
+                    {
+                        FilesDeleted = 0,
+                        BytesFreed = 0,
+                        Errors = new List<string> { "Storage manager not available" }
+                    });
+                }
+
+                var config = TorrentDownloaderPlugin.Instance?.Configuration;
+                if (config == null)
+                {
+                    return BadRequest("Plugin configuration not available");
+                }
+
+                var downloads = await _downloadManager.GetAllDownloadsAsync();
+                var validIds = downloads.Select(d => d.DownloadId).ToList();
+
+                // Cleanup orphaned files
+                var (orphanedFiles, orphanedBytes) = await _storageManager.CleanupOrphanedFilesAsync(validIds);
+
+                // Cleanup old downloads
+                var retentionDate = DateTime.UtcNow.AddDays(-config.CleanupRetentionDays);
+                var (oldFiles, oldBytes) = await _storageManager.CleanupOldDownloadsAsync(retentionDate);
+
+                var response = new CleanupResultResponse
+                {
+                    FilesDeleted = orphanedFiles + oldFiles,
+                    BytesFreed = orphanedBytes + oldBytes,
+                    Errors = new List<string>()
+                };
+
+                _logger.LogInformation("Cleanup completed: {Files} files deleted, {Bytes} bytes freed",
+                    response.FilesDeleted, response.BytesFreed);
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to perform cleanup");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Failed to perform cleanup");
+            }
+        }
+
+        /// <summary>
+        /// Gets list of available Jellyfin libraries.
+        /// </summary>
+        /// <returns>List of library information.</returns>
+        [HttpGet("libraries")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public ActionResult<IEnumerable<LibraryInfoResponse>> GetLibraries()
+        {
+            try
+            {
+                var virtualFolders = _libraryManager.GetVirtualFolders();
+                var libraries = virtualFolders.Select(vf => new LibraryInfoResponse
+                {
+                    Id = string.IsNullOrEmpty(vf.ItemId) ? Guid.Empty : Guid.Parse(vf.ItemId),
+                    Name = vf.Name ?? string.Empty,
+                    CollectionType = vf.CollectionType?.ToString() ?? string.Empty,
+                    Paths = vf.Locations?.ToList() ?? new List<string>()
+                }).ToList();
+
+                return Ok(libraries);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to get libraries");
+                return StatusCode(StatusCodes.Status500InternalServerError, "Failed to retrieve libraries");
             }
         }
 

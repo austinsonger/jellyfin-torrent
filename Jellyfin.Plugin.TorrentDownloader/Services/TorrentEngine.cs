@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.TorrentDownloader.Configuration;
 using Jellyfin.Plugin.TorrentDownloader.Models;
@@ -14,13 +15,14 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
     /// <summary>
     /// Implements torrent engine operations using MonoTorrent.
     /// </summary>
-    public class TorrentEngine : ITorrentEngine
+    public class TorrentEngine : ITorrentEngine, IDisposable
     {
         private readonly ILogger<TorrentEngine> _logger;
         private readonly Dictionary<Guid, TorrentManager> _torrentManagers;
         private ClientEngine? _engine;
         private EngineSettings? _engineSettings;
         private readonly object _lock = new object();
+        private bool _disposed;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TorrentEngine"/> class.
@@ -33,31 +35,54 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
         }
 
         /// <inheritdoc />
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Releases unmanaged and - optionally - managed resources.
+        /// </summary>
+        /// <param name="disposing"><c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only unmanaged resources.</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    _engine?.Dispose();
+                }
+
+                _disposed = true;
+            }
+        }
+
+        /// <inheritdoc />
         public async Task InitializeAsync()
         {
             try
             {
-                var config = Plugin.Instance?.Configuration;
+                var config = TorrentDownloaderPlugin.Instance?.Configuration;
                 if (config == null)
                 {
                     throw new InvalidOperationException("Plugin configuration not available");
                 }
 
-                _engineSettings = new EngineSettings
+                var settingBuilder = new EngineSettingsBuilder
                 {
-                    ListenPort = config.ListenPort,
-                    DhtPort = config.EnableDHT ? config.ListenPort : 0,
-                    MaximumDownloadSpeed = config.MaxDownloadSpeed > 0 ? (int)config.MaxDownloadSpeed : 0,
-                    MaximumUploadSpeed = config.MaxUploadSpeed > 0 ? (int)config.MaxUploadSpeed : 0,
+                    MaximumDownloadRate = config.MaxDownloadSpeed > 0 ? (int)config.MaxDownloadSpeed : 0,
+                    MaximumUploadRate = config.MaxUploadSpeed > 0 ? (int)config.MaxUploadSpeed : 0,
                     AllowPortForwarding = true
                 };
+                settingBuilder.ListenEndPoints.Add("ipv4", new IPEndPoint(IPAddress.Any, config.ListenPort));
 
+                _engineSettings = settingBuilder.ToSettings();
                 _engine = new ClientEngine(_engineSettings);
 
                 if (config.EnableDHT)
                 {
-                    await _engine.DhtEngine.StartAsync();
-                    _logger.LogInformation("DHT engine started on port {Port}", config.ListenPort);
+                    _logger.LogInformation("DHT engine enabled on port {Port}", config.ListenPort);
                 }
 
                 _logger.LogInformation("Torrent engine initialized successfully");
@@ -81,27 +106,23 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
 
                 _logger.LogInformation("Starting download for {Name}", downloadEntry.DisplayName);
 
-                // Parse torrent source
-                Torrent torrent;
+                // Parse torrent source and create manager
+                TorrentManager manager;
                 if (downloadEntry.TorrentSource.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
                 {
                     var magnetLink = MagnetLink.Parse(downloadEntry.TorrentSource);
-                    torrent = await _engine.AddStreamingAsync(magnetLink, downloadEntry.StagingPath);
+                    manager = await _engine.AddStreamingAsync(magnetLink, downloadEntry.StagingPath);
                 }
                 else
                 {
-                    torrent = await Torrent.LoadAsync(downloadEntry.TorrentSource);
+                    var torrent = await Torrent.LoadAsync(downloadEntry.TorrentSource);
+                    var torrentSettings = new TorrentSettingsBuilder
+                    {
+                        AllowInitialSeeding = false,
+                        MaximumConnections = 60
+                    }.ToSettings();
+                    manager = await _engine.AddAsync(torrent, downloadEntry.StagingPath, torrentSettings);
                 }
-
-                // Create torrent settings
-                var torrentSettings = new TorrentSettings
-                {
-                    AllowInitialSeeding = false,
-                    MaximumConnections = 60
-                };
-
-                // Create and register manager
-                var manager = await _engine.AddAsync(torrent, downloadEntry.StagingPath, torrentSettings);
                 
                 lock (_lock)
                 {
@@ -114,7 +135,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                 _logger.LogInformation(
                     "Download started: {Name}, InfoHash: {Hash}",
                     downloadEntry.DisplayName,
-                    torrent.InfoHash.ToHex());
+                    manager.InfoHashes.V1.ToHex());
             }
             catch (Exception ex)
             {
@@ -215,9 +236,9 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                     ProgressPercent = (decimal)manager.Progress,
                     DownloadSpeed = manager.Monitor.DownloadSpeed,
                     UploadSpeed = manager.Monitor.UploadSpeed,
-                    PeerCount = manager.Peers.ConnectedPeers.Count,
+                    PeerCount = manager.OpenConnections,
                     DisplayName = manager.Torrent?.Name ?? "Unknown",
-                    InfoHash = manager.InfoHash.ToHex()
+                    InfoHash = manager.InfoHashes.V1.ToHex()
                 };
 
                 // Calculate ETA

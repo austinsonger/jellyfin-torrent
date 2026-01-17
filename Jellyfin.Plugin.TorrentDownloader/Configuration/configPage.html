@@ -90,6 +90,45 @@
                         <div class="fieldDescription">Automatically import completed downloads into Jellyfin libraries</div>
                     </div>
 
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="importRetryAttempts">Import Retry Attempts:</label>
+                        <input is="emby-input" type="number" id="importRetryAttempts" name="ImportRetryAttempts" min="1" max="10" />
+                        <div class="fieldDescription">Number of retry attempts for failed imports</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="importRetryDelay">Import Retry Delay (seconds):</label>
+                        <input is="emby-input" type="number" id="importRetryDelay" name="ImportRetryDelaySeconds" min="1" max="60" />
+                        <div class="fieldDescription">Initial delay between import retries (exponential backoff)</div>
+                    </div>
+
+                    <h2>Storage Management</h2>
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="storageCriticalThreshold">Critical Threshold (GB):</label>
+                        <input is="emby-input" type="number" id="storageCriticalThreshold" name="StorageCriticalThreshold" min="1" />
+                        <div class="fieldDescription">Pause downloads when space below this threshold</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="storageRecoveryThreshold">Recovery Threshold (GB):</label>
+                        <input is="emby-input" type="number" id="storageRecoveryThreshold" name="StorageRecoveryThreshold" min="1" />
+                        <div class="fieldDescription">Resume downloads when space above this threshold</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel" for="cleanupRetentionDays">Cleanup Retention (days):</label>
+                        <input is="emby-input" type="number" id="cleanupRetentionDays" name="CleanupRetentionDays" min="1" max="365" />
+                        <div class="fieldDescription">Days to retain completed downloads before cleanup</div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="enableAutomaticCleanup" name="EnableAutomaticCleanup" />
+                            <span>Enable Automatic Cleanup</span>
+                        </label>
+                        <div class="fieldDescription">Automatically clean up old completed downloads</div>
+                    </div>
+
                     <br/>
                     <button is="emby-button" type="submit" class="raised button-submit block">
                         <span>Save</span>
@@ -121,9 +160,16 @@
                 document.querySelector('#listenPort').value = config.ListenPort || 6881;
                 document.querySelector('#removeAfterImport').checked = config.RemoveAfterImport === true;
                 document.querySelector('#autoImportEnabled').checked = config.AutoImportEnabled !== false;
+                document.querySelector('#importRetryAttempts').value = config.ImportRetryAttempts || 3;
+                document.querySelector('#importRetryDelay').value = config.ImportRetryDelaySeconds || 5;
                 
                 // Convert bytes to GB for display
                 document.querySelector('#storageWarningThreshold').value = config.StorageWarningThreshold ? Math.floor(config.StorageWarningThreshold / 1073741824) : 10;
+                document.querySelector('#storageCriticalThreshold').value = config.StorageCriticalThreshold ? Math.floor(config.StorageCriticalThreshold / 1073741824) : 2;
+                document.querySelector('#storageRecoveryThreshold').value = config.StorageRecoveryThreshold ? Math.floor(config.StorageRecoveryThreshold / 1073741824) : 15;
+                
+                document.querySelector('#cleanupRetentionDays').value = config.CleanupRetentionDays || 30;
+                document.querySelector('#enableAutomaticCleanup').checked = config.EnableAutomaticCleanup === true;
 
                 Dashboard.hideLoadingMsg();
             });
@@ -149,10 +195,19 @@
                 config.ListenPort = parseInt(document.querySelector('#listenPort').value) || 6881;
                 config.RemoveAfterImport = document.querySelector('#removeAfterImport').checked;
                 config.AutoImportEnabled = document.querySelector('#autoImportEnabled').checked;
+                config.ImportRetryAttempts = parseInt(document.querySelector('#importRetryAttempts').value) || 3;
+                config.ImportRetryDelaySeconds = parseInt(document.querySelector('#importRetryDelay').value) || 5;
                 
                 // Convert GB to bytes for storage
-                var thresholdGB = parseInt(document.querySelector('#storageWarningThreshold').value) || 10;
-                config.StorageWarningThreshold = thresholdGB * 1073741824;
+                var warningGB = parseInt(document.querySelector('#storageWarningThreshold').value) || 10;
+                var criticalGB = parseInt(document.querySelector('#storageCriticalThreshold').value) || 2;
+                var recoveryGB = parseInt(document.querySelector('#storageRecoveryThreshold').value) || 15;
+                config.StorageWarningThreshold = warningGB * 1073741824;
+                config.StorageCriticalThreshold = criticalGB * 1073741824;
+                config.StorageRecoveryThreshold = recoveryGB * 1073741824;
+                
+                config.CleanupRetentionDays = parseInt(document.querySelector('#cleanupRetentionDays').value) || 30;
+                config.EnableAutomaticCleanup = document.querySelector('#enableAutomaticCleanup').checked;
 
                 ApiClient.updatePluginConfiguration(TorrentConfigPage.pluginUniqueId, config).then(function(result) {
                     Dashboard.processPluginConfigurationUpdateResult(result);

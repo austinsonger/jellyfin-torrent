@@ -34,7 +34,7 @@ A Jellyfin plugin that enables torrent downloading functionality directly within
 
 ### Method 2: Manual Installation
 
-1. Download the latest release from the [Releases page](https://github.com/yourusername/jellyfin-torrent/releases)
+1. Download the latest release from the [Releases page](https://github.com/austinsonger/jellyfin-torrent/releases)
 2. Extract the ZIP file
 3. Copy `Jellyfin.Plugin.TorrentDownloader.dll` to your Jellyfin plugins directory:
    - **Linux**: `/var/lib/jellyfin/plugins/TorrentDownloader/`
@@ -241,7 +241,7 @@ Delete a download and optionally remove files.
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/jellyfin-torrent.git
+git clone https://github.com/austinsonger/jellyfin-torrent.git
 cd jellyfin-torrent
 
 # Restore dependencies

@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Torrent Manager</title>
+</head>
+<body>
+    <div id="torrentManagerPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-button,emby-input,emby-select">
+        <div class="content-primary">
+            <div class="verticalSection">
+                <div class="sectionTitleContainer flex align-items-center">
+                    <h2 class="sectionTitle">Torrent Manager</h2>
+                    <button is="emby-button" type="button" class="raised button-submit" id="addDownloadBtn" style="margin-left: auto;">
+                        <span>Add Download</span>
+                    </button>
+                    <button is="emby-button" type="button" class="raised" id="refreshBtn" style="margin-left: 10px;">
+                        <span>Refresh</span>
+                    </button>
+                </div>
+
+                <div id="storageIndicator" class="paperList" style="margin-bottom: 20px; padding: 15px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <div>
+                            <strong>Storage Status:</strong> <span id="storageStatusText">Loading...</span>
+                        </div>
+                        <div id="storageBar" style="flex: 1; height: 20px; background: #ddd; margin: 0 20px; border-radius: 10px; overflow: hidden;">
+                            <div id="storageBarFill" style="height: 100%; background: #4CAF50; width: 0%; transition: width 0.3s;"></div>
+                        </div>
+                        <div id="storageSpace">
+                            <span id="storageAvailable">0</span> GB / <span id="storageTotal">0</span> GB
+                        </div>
+                    </div>
+                </div>
+
+                <div class="paperList">
+                    <div style="padding: 10px; border-bottom: 1px solid #333;">
+                        <label style="margin-right: 10px;">Filter:</label>
+                        <select is="emby-select" id="filterSelect" style="width: 150px;">
+                            <option value="all">All Downloads</option>
+                            <option value="active">Active</option>
+                            <option value="completed">Completed</option>
+                            <option value="failed">Failed</option>
+                        </select>
+                        <label style="margin-left: 20px; margin-right: 10px;">Sort:</label>
+                        <select is="emby-select" id="sortSelect" style="width: 150px;">
+                            <option value="created">Creation Time</option>
+                            <option value="name">Name</option>
+                            <option value="progress">Progress</option>
+                            <option value="size">Size</option>
+                        </select>
+                    </div>
+                    
+                    <div id="downloadsContainer">
+                        <p style="padding: 20px; text-align: center;">Loading downloads...</p>
+                    </div>
+                </div>
+
+                <div id="detailsPanel" style="display: none; margin-top: 20px;" class="paperList">
+                    <div style="padding: 15px;">
+                        <h3>Download Details</h3>
+                        <button is="emby-button" type="button" class="raised button-cancel" id="closeDetailsBtn" style="float: right;">
+                            <span>Close</span>
+                        </button>
+                        <div id="detailsContent" style="margin-top: 40px;">
+                            <!-- Details will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Download Dialog -->
+    <div id="addDownloadDialog" class="dialog" style="display: none;">
+        <div class="dialogContent" style="max-width: 600px; margin: 50px auto; background: #1a1a1a; padding: 20px; border-radius: 8px;">
+            <h2>Add Download</h2>
+            <form id="addDownloadForm">
+                <div class="inputContainer">
+                    <label class="inputLabel" for="torrentSource">Torrent Source (magnet link or file path):</label>
+                    <textarea is="emby-input" id="torrentSource" name="torrentSource" rows="4" style="width: 100%;" required></textarea>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel" for="targetLibrary">Target Library (optional):</label>
+                    <select is="emby-select" id="targetLibrary" name="targetLibrary" style="width: 100%;">
+                        <option value="">Auto-detect</option>
+                    </select>
+                </div>
+                <div style="margin-top: 20px;">
+                    <button is="emby-button" type="submit" class="raised button-submit">
+                        <span>Add Download</span>
+                    </button>
+                    <button is="emby-button" type="button" class="raised button-cancel" id="cancelAddBtn" style="margin-left: 10px;">
+                        <span>Cancel</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <style>
+        .download-row {
+            padding: 15px;
+            border-bottom: 1px solid #333;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .download-row:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .download-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .download-name {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+        .status-queued { background: #2196F3; color: white; }
+        .status-downloading { background: #4CAF50; color: white; }
+        .status-paused { background: #FF9800; color: white; }
+        .status-completed { background: #4CAF50; color: white; }
+        .status-importing { background: #9C27B0; color: white; }
+        .status-imported { background: #4CAF50; color: white; }
+        .status-failed { background: #F44336; color: white; }
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: #333;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background: #4CAF50;
+            transition: width 0.5s;
+        }
+        .download-stats {
+            display: flex;
+            gap: 20px;
+            font-size: 0.9em;
+            color: #aaa;
+        }
+        .download-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .action-btn {
+            padding: 6px 12px;
+            font-size: 0.85em;
+        }
+        .dialog {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+        }
+        @media (max-width: 768px) {
+            .download-stats {
+                flex-direction: column;
+                gap: 5px;
+            }
+            .download-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+
+    <script type="text/javascript">
+        var TorrentManager = {
+            downloads: [],
+            libraries: [],
+            pollingInterval: null,
+            selectedDownloadId: null,
+            apiBaseUrl: '/api/torrents'
+        };
+
+        // Initialize page
+        document.querySelector('#torrentManagerPage').addEventListener('pageshow', function() {
+            TorrentManager.init();
+        });
+
+        document.querySelector('#torrentManagerPage').addEventListener('pagehide', function() {
+            TorrentManager.stopPolling();
+        });
+
+        TorrentManager.init = function() {
+            TorrentManager.loadLibraries();
+            TorrentManager.loadDownloads();
+            TorrentManager.loadStorageStatus();
+            TorrentManager.startPolling();
+            TorrentManager.setupEventListeners();
+        };
+
+        TorrentManager.setupEventListeners = function() {
+            document.querySelector('#addDownloadBtn').addEventListener('click', function() {
+                document.querySelector('#addDownloadDialog').style.display = 'block';
+            });
+
+            document.querySelector('#cancelAddBtn').addEventListener('click', function() {
+                document.querySelector('#addDownloadDialog').style.display = 'none';
+            });
+
+            document.querySelector('#refreshBtn').addEventListener('click', function() {
+                TorrentManager.loadDownloads();
+                TorrentManager.loadStorageStatus();
+            });
+
+            document.querySelector('#filterSelect').addEventListener('change', function() {
+                TorrentManager.renderDownloads();
+            });
+
+            document.querySelector('#sortSelect').addEventListener('change', function() {
+                TorrentManager.renderDownloads();
+            });
+
+            document.querySelector('#closeDetailsBtn').addEventListener('click', function() {
+                document.querySelector('#detailsPanel').style.display = 'none';
+            });
+
+            document.querySelector('#addDownloadForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                TorrentManager.addDownload();
+            });
+        };
+
+        TorrentManager.loadLibraries = function() {
+            fetch(TorrentManager.apiBaseUrl + '/libraries', {
+                headers: { 'X-Emby-Token': ApiClient.accessToken() }
+            })
+            .then(response => response.json())
+            .then(libraries => {
+                TorrentManager.libraries = libraries;
+                var select = document.querySelector('#targetLibrary');
+                libraries.forEach(lib => {
+                    var option = document.createElement('option');
+                    option.value = lib.Id;
+                    option.textContent = lib.Name + (lib.CollectionType ? ' (' + lib.CollectionType + ')' : '');
+                    select.appendChild(option);
+                });
+            })
+            .catch(err => console.error('Failed to load libraries:', err));
+        };
+
+        TorrentManager.loadDownloads = function() {
+            fetch(TorrentManager.apiBaseUrl + '/list', {
+                headers: { 'X-Emby-Token': ApiClient.accessToken() }
+            })
+            .then(response => response.json())
+            .then(downloads => {
+                TorrentManager.downloads = downloads;
+                TorrentManager.renderDownloads();
+            })
+            .catch(err => {
+                console.error('Failed to load downloads:', err);
+                document.querySelector('#downloadsContainer').innerHTML = '<p style="padding: 20px; text-align: center; color: #f44336;">Failed to load downloads</p>';
+            });
+        };
+
+        TorrentManager.loadStorageStatus = function() {
+            fetch(TorrentManager.apiBaseUrl + '/storage/status', {
+                headers: { 'X-Emby-Token': ApiClient.accessToken() }
+            })
+            .then(response => response.json())
+            .then(status => {
+                TorrentManager.updateStorageIndicator(status);
+            })
+            .catch(err => console.error('Failed to load storage status:', err));
+        };
+
+        TorrentManager.updateStorageIndicator = function(status) {
+            var stagingVolume = status.Volumes.find(v => v.IsStagingVolume) || status.Volumes[0];
+            if (!stagingVolume) return;
+
+            var availableGB = (stagingVolume.AvailableBytes / 1073741824).toFixed(2);
+            var totalGB = (stagingVolume.TotalBytes / 1073741824).toFixed(2);
+            var usedPercent = ((stagingVolume.TotalBytes - stagingVolume.AvailableBytes) / stagingVolume.TotalBytes * 100).toFixed(0);
+
+            document.querySelector('#storageAvailable').textContent = availableGB;
+            document.querySelector('#storageTotal').textContent = totalGB;
+            document.querySelector('#storageBarFill').style.width = usedPercent + '%';
+
+            var statusText = document.querySelector('#storageStatusText');
+            var barFill = document.querySelector('#storageBarFill');
+            
+            if (stagingVolume.Status === 'Critical') {
+                statusText.textContent = 'Critical';
+                statusText.style.color = '#F44336';
+                barFill.style.background = '#F44336';
+            } else if (stagingVolume.Status === 'Warning') {
+                statusText.textContent = 'Warning';
+                statusText.style.color = '#FF9800';
+                barFill.style.background = '#FF9800';
+            } else {
+                statusText.textContent = 'Normal';
+                statusText.style.color = '#4CAF50';
+                barFill.style.background = '#4CAF50';
+            }
+        };
+
+        TorrentManager.renderDownloads = function() {
+            var container = document.querySelector('#downloadsContainer');
+            var filtered = TorrentManager.filterDownloads();
+            var sorted = TorrentManager.sortDownloads(filtered);
+
+            if (sorted.length === 0) {
+                container.innerHTML = '<p style="padding: 20px; text-align: center;">No downloads found</p>';
+                return;
+            }
+
+            var html = '';
+            sorted.forEach(download => {
+                html += TorrentManager.renderDownloadRow(download);
+            });
+            container.innerHTML = html;
+
+            // Attach event listeners
+            sorted.forEach(download => {
+                var row = document.querySelector('#download-' + download.DownloadId);
+                if (row) {
+                    row.addEventListener('click', function(e) {
+                        if (!e.target.classList.contains('action-btn')) {
+                            TorrentManager.showDetails(download.DownloadId);
+                        }
+                    });
+                }
+            });
+        };
+
+        TorrentManager.renderDownloadRow = function(download) {
+            var statusClass = 'status-' + download.Status.toLowerCase();
+            var progressPercent = download.ProgressPercent || 0;
+            var downloadSpeed = TorrentManager.formatSpeed(download.DownloadSpeed);
+            var uploadSpeed = TorrentManager.formatSpeed(download.UploadSpeed);
+            var size = TorrentManager.formatSize(download.TotalSize);
+            var eta = TorrentManager.formatEta(download.EstimatedTimeRemaining);
+
+            var actions = TorrentManager.getAvailableActions(download);
+
+            return `
+                <div class="download-row" id="download-${download.DownloadId}">
+                    <div class="download-header">
+                        <div class="download-name">${TorrentManager.escapeHtml(download.DisplayName)}</div>
+                        <span class="status-badge ${statusClass}">${download.Status}</span>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" style="width: ${progressPercent}%"></div>
+                    </div>
+                    <div class="download-stats">
+                        <span>Progress: ${progressPercent.toFixed(1)}%</span>
+                        <span>↓ ${downloadSpeed}</span>
+                        <span>↑ ${uploadSpeed}</span>
+                        <span>Size: ${size}</span>
+                        <span>ETA: ${eta}</span>
+                        <span>Peers: ${download.PeerCount}</span>
+                    </div>
+                    <div class="download-actions" style="margin-top: 10px;">
+                        ${actions}
+                    </div>
+                </div>
+            `;
+        };
+
+        TorrentManager.getAvailableActions = function(download) {
+            var actions = '';
+            var status = download.Status.toLowerCase();
+
+            if (status === 'downloading') {
+                actions += `<button class="action-btn emby-button raised" onclick="TorrentManager.pauseDownload('${download.DownloadId}')">Pause</button>`;
+            }
+            if (status === 'paused') {
+                actions += `<button class="action-btn emby-button raised" onclick="TorrentManager.resumeDownload('${download.DownloadId}')">Resume</button>`;
+            }
+            if (status === 'queued' || status === 'downloading' || status === 'paused') {
+                actions += `<button class="action-btn emby-button raised button-cancel" onclick="TorrentManager.cancelDownload('${download.DownloadId}')">Cancel</button>`;
+            }
+            actions += `<button class="action-btn emby-button raised button-cancel" onclick="TorrentManager.deleteDownload('${download.DownloadId}')">Delete</button>`;
+            
+            return actions;
+        };
+
+        TorrentManager.filterDownloads = function() {
+            var filter = document.querySelector('#filterSelect').value;
+            
+            if (filter === 'all') return TorrentManager.downloads;
+            
+            return TorrentManager.downloads.filter(d => {
+                var status = d.Status.toLowerCase();
+                if (filter === 'active') return status === 'queued' || status === 'downloading';
+                if (filter === 'completed') return status === 'completed' || status === 'imported';
+                if (filter === 'failed') return status === 'failed';
+                return true;
+            });
+        };
+
+        TorrentManager.sortDownloads = function(downloads) {
+            var sort = document.querySelector('#sortSelect').value;
+            
+            return downloads.slice().sort((a, b) => {
+                if (sort === 'created') return new Date(b.CreatedAt) - new Date(a.CreatedAt);
+                if (sort === 'name') return a.DisplayName.localeCompare(b.DisplayName);
+                if (sort === 'progress') return b.ProgressPercent - a.ProgressPercent;
+                if (sort === 'size') return b.TotalSize - a.TotalSize;
+                return 0;
+            });
+        };
+
+        TorrentManager.showDetails = function(downloadId) {
+            fetch(TorrentManager.apiBaseUrl + '/' + downloadId + '/details', {
+                headers: { 'X-Emby-Token': ApiClient.accessToken() }
+            })
+            .then(response => response.json())
+            .then(details => {
+                var html = `
+                    <div><strong>Download ID:</strong> ${details.DownloadId}</div>
+                    <div><strong>Torrent Source:</strong> ${TorrentManager.escapeHtml(details.TorrentSource)}</div>
+                    <div><strong>Staging Path:</strong> ${details.StagingPath}</div>
+                    <div><strong>Info Hash:</strong> ${details.InfoHash || 'N/A'}</div>
+                    <div><strong>Created:</strong> ${new Date(details.CreatedAt).toLocaleString()}</div>
+                    ${details.CompletedAt ? '<div><strong>Completed:</strong> ' + new Date(details.CompletedAt).toLocaleString() + '</div>' : ''}
+                    ${details.ImportedAt ? '<div><strong>Imported:</strong> ' + new Date(details.ImportedAt).toLocaleString() + '</div>' : ''}
+                    ${details.ErrorMessage ? '<div style="color: #f44336;"><strong>Error:</strong> ' + TorrentManager.escapeHtml(details.ErrorMessage) + '</div>' : ''}
+                `;
+                document.querySelector('#detailsContent').innerHTML = html;
+                document.querySelector('#detailsPanel').style.display = 'block';
+            })
+            .catch(err => console.error('Failed to load details:', err));
+        };
+
+        TorrentManager.addDownload = function() {
+            var torrentSource = document.querySelector('#torrentSource').value;
+            var targetLibraryId = document.querySelector('#targetLibrary').value;
+
+            var requestBody = {
+                TorrentSource: torrentSource,
+                UserId: ApiClient.getCurrentUserId()
+            };
+
+            if (targetLibraryId) {
+                requestBody.TargetLibraryId = targetLibraryId;
+            }
+
+            fetch(TorrentManager.apiBaseUrl + '/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Emby-Token': ApiClient.accessToken()
+                },
+                body: JSON.stringify(requestBody)
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('Failed to add download');
+                return response.json();
+            })
+            .then(() => {
+                document.querySelector('#addDownloadDialog').style.display = 'none';
+                document.querySelector('#addDownloadForm').reset();
+                TorrentManager.loadDownloads();
+                Dashboard.alert('Download added successfully');
+            })
+            .catch(err => {
+                console.error('Failed to add download:', err);
+                Dashboard.alert('Failed to add download: ' + err.message);
+            });
+        };
+
+        TorrentManager.pauseDownload = function(downloadId) {
+            TorrentManager.controlDownload(downloadId, 'pause');
+        };
+
+        TorrentManager.resumeDownload = function(downloadId) {
+            TorrentManager.controlDownload(downloadId, 'resume');
+        };
+
+        TorrentManager.cancelDownload = function(downloadId) {
+            if (confirm('Are you sure you want to cancel this download?')) {
+                TorrentManager.controlDownload(downloadId, 'cancel');
+            }
+        };
+
+        TorrentManager.deleteDownload = function(downloadId) {
+            if (confirm('Are you sure you want to delete this download?')) {
+                fetch(TorrentManager.apiBaseUrl + '/' + downloadId, {
+                    method: 'DELETE',
+                    headers: { 'X-Emby-Token': ApiClient.accessToken() }
+                })
+                .then(() => TorrentManager.loadDownloads())
+                .catch(err => console.error('Failed to delete download:', err));
+            }
+        };
+
+        TorrentManager.controlDownload = function(downloadId, action) {
+            fetch(TorrentManager.apiBaseUrl + '/' + downloadId + '/control', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Emby-Token': ApiClient.accessToken()
+                },
+                body: JSON.stringify({ Action: action })
+            })
+            .then(() => TorrentManager.loadDownloads())
+            .catch(err => console.error('Failed to control download:', err));
+        };
+
+        TorrentManager.startPolling = function() {
+            TorrentManager.pollingInterval = setInterval(function() {
+                if (!document.hidden) {
+                    TorrentManager.loadDownloads();
+                    TorrentManager.loadStorageStatus();
+                }
+            }, 2000);
+        };
+
+        TorrentManager.stopPolling = function() {
+            if (TorrentManager.pollingInterval) {
+                clearInterval(TorrentManager.pollingInterval);
+            }
+        };
+
+        TorrentManager.formatSize = function(bytes) {
+            if (!bytes) return '0 B';
+            var sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            var i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
+        };
+
+        TorrentManager.formatSpeed = function(bytesPerSecond) {
+            if (!bytesPerSecond) return '0 KB/s';
+            var kb = bytesPerSecond / 1024;
+            if (kb < 1024) return kb.toFixed(1) + ' KB/s';
+            return (kb / 1024).toFixed(1) + ' MB/s';
+        };
+
+        TorrentManager.formatEta = function(seconds) {
+            if (!seconds) return 'Unknown';
+            var hours = Math.floor(seconds / 3600);
+            var minutes = Math.floor((seconds % 3600) / 60);
+            if (hours > 0) return hours + 'h ' + minutes + 'm';
+            return minutes + 'm';
+        };
+
+        TorrentManager.escapeHtml = function(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        };
+    </script>
+</body>
+</html>
