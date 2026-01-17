@@ -23,57 +23,18 @@ namespace Jellyfin.Plugin.TorrentDownloader
         /// </summary>
         /// <param name="applicationPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
         /// <param name="xmlSerializer">Instance of the <see cref="IXmlSerializer"/> interface.</param>
-        /// <param name="loggerFactory">Logger factory.</param>
-        /// <param name="libraryManager">Library manager.</param>
-        /// <param name="fileSystem">File system.</param>
         public TorrentDownloaderPlugin(
             IApplicationPaths applicationPaths, 
-            IXmlSerializer xmlSerializer,
-            ILoggerFactory loggerFactory,
-            ILibraryManager libraryManager,
-            IFileSystem fileSystem)
+            IXmlSerializer xmlSerializer)
             : base(applicationPaths, xmlSerializer)
         {
             Instance = this;
-            
-            // Initialize services in correct dependency order
-            var torrentLogger = loggerFactory.CreateLogger<TorrentEngine>();
-            TorrentEngine = new TorrentEngine(torrentLogger);
-            
-            var storageLogger = loggerFactory.CreateLogger<StorageManager>();
-            StorageManager = new StorageManager(libraryManager, storageLogger);
-            
-            var importLogger = loggerFactory.CreateLogger<ImportOrchestrator>();
-            ImportOrchestrator = new ImportOrchestrator(libraryManager, fileSystem, StorageManager, importLogger);
-            
-            var downloadLogger = loggerFactory.CreateLogger<DownloadManager>();
-            DownloadManager = new DownloadManager(TorrentEngine, downloadLogger, StorageManager, ImportOrchestrator);
         }
 
         /// <summary>
         /// Gets the current plugin instance.
         /// </summary>
         public static TorrentDownloaderPlugin? Instance { get; private set; }
-
-        /// <summary>
-        /// Gets the torrent engine.
-        /// </summary>
-        public ITorrentEngine TorrentEngine { get; private set; }
-
-        /// <summary>
-        /// Gets the download manager.
-        /// </summary>
-        public IDownloadManager DownloadManager { get; private set; }
-
-        /// <summary>
-        /// Gets the storage manager.
-        /// </summary>
-        public IStorageManager StorageManager { get; private set; }
-
-        /// <summary>
-        /// Gets the import orchestrator.
-        /// </summary>
-        public IImportOrchestrator ImportOrchestrator { get; private set; }
 
         /// <inheritdoc />
         public override string Name => "Torrent Downloader";

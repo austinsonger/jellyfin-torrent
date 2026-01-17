@@ -8,6 +8,7 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <Nullable>enable</Nullable>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+    <Version>1.0.2.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,6 +22,13 @@
     <EmbeddedResource Include="Web\**\*.html" />
     <EmbeddedResource Include="Web\**\*.js" />
     <EmbeddedResource Include="Web\**\*.css" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\manifest.json">
+      <Link>manifest.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>
