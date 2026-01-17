@@ -37,15 +37,17 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
         /// <param name="logger">Logger instance.</param>
         /// <param name="storageManager">Storage manager instance (optional).</param>
         public TorrentsController(
+            IDownloadManager downloadManager,
             IUserManager userManager,
             ILibraryManager libraryManager,
-            ILogger<TorrentsController> logger)
+            ILogger<TorrentsController> logger,
+            IStorageManager? storageManager = null)
         {
-            _downloadManager = TorrentDownloaderPlugin.Instance?.DownloadManager ?? throw new InvalidOperationException("Plugin not initialized");
-            _storageManager = TorrentDownloaderPlugin.Instance?.StorageManager;
+            _downloadManager = downloadManager;
             _userManager = userManager;
             _libraryManager = libraryManager;
             _logger = logger;
+            _storageManager = storageManager;
         }
 
         /// <summary>
