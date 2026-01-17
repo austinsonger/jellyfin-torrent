@@ -29,7 +29,7 @@ A Jellyfin plugin that enables torrent downloading functionality directly within
 
 1. Open Jellyfin Dashboard
 2. Navigate to **Plugins** → **Repositories**
-3. Add custom repository: `https://your-repo-url/manifest.json` 4. Go to **Catalog** and install **Torrent Downloader**
+3. Add custom repository: `https://raw.githubusercontent.com/austinsonger/jellyfin-torrent/refs/heads/main/manifest.json` 4. Go to **Catalog** and install **Torrent Downloader**
 5. Restart Jellyfin
 
 ### Method 2: Manual Installation
