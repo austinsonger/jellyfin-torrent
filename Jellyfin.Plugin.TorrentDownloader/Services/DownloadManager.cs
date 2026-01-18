@@ -15,6 +15,8 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
     /// </summary>
     public class DownloadManager : IDownloadManager, IDisposable
     {
+        private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions { WriteIndented = true };
+        
         private readonly ITorrentEngine _torrentEngine;
         private readonly ILogger<DownloadManager> _logger;
         private readonly IStorageManager? _storageManager;
@@ -107,11 +109,15 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                 var stagingPath = Path.Combine(config.StagingDirectory, downloadId.ToString());
                 Directory.CreateDirectory(stagingPath);
 
+                // Sanitize display name from torrent source
+                var displayName = Path.GetFileNameWithoutExtension(torrentSource);
+                displayName = SanitizeDisplayName(displayName);
+
                 var entry = new DownloadEntry
                 {
                     DownloadId = downloadId,
                     TorrentSource = torrentSource,
-                    DisplayName = Path.GetFileNameWithoutExtension(torrentSource),
+                    DisplayName = displayName,
                     Status = DownloadStatus.Queued,
                     StagingPath = stagingPath,
                     CreatedAt = DateTime.UtcNow,
@@ -296,8 +302,29 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
         {
             try
             {
-                var json = JsonSerializer.Serialize(_downloads, new JsonSerializerOptions { WriteIndented = true });
-                await File.WriteAllTextAsync(_stateFilePath, json).ConfigureAwait(false);
+                var json = JsonSerializer.Serialize(_downloads, JsonOptions);
+                
+                // Atomic write: write to temp file first, then move
+                var tempFilePath = _stateFilePath + ".tmp";
+                var backupFilePath = _stateFilePath + ".bak";
+                
+                // Write to temporary file
+                await File.WriteAllTextAsync(tempFilePath, json).ConfigureAwait(false);
+                
+                // Create backup of existing state file if it exists
+                if (File.Exists(_stateFilePath))
+                {
+                    if (File.Exists(backupFilePath))
+                    {
+                        File.Delete(backupFilePath);
+                    }
+                    File.Move(_stateFilePath, backupFilePath);
+                }
+                
+                // Atomically replace the state file with the new one
+                File.Move(tempFilePath, _stateFilePath);
+                
+                _logger.LogDebug("Successfully saved state for {Count} downloads", _downloads.Count);
             }
             catch (Exception ex)
             {
@@ -405,6 +432,40 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
             {
                 _logger.LogError(ex, "Error updating download progress");
             }
+        }
+
+        /// <summary>
+        /// Sanitizes display name by removing potentially dangerous characters.
+        /// </summary>
+        /// <param name="name">The name to sanitize.</param>
+        /// <returns>Sanitized name.</returns>
+        private static string SanitizeDisplayName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return "Unknown";
+            }
+
+            // Limit length
+            if (name.Length > 200)
+            {
+                name = name.Substring(0, 200);
+            }
+
+            // Remove invalid path characters
+            var invalidChars = Path.GetInvalidFileNameChars();
+            foreach (var c in invalidChars)
+            {
+                name = name.Replace(c, '_');
+            }
+
+            // Remove control characters
+            name = new string(name.Where(c => !char.IsControl(c)).ToArray());
+
+            // Trim whitespace
+            name = name.Trim();
+
+            return string.IsNullOrWhiteSpace(name) ? "Unknown" : name;
         }
     }
 }

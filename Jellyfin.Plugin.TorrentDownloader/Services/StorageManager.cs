@@ -85,12 +85,12 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
             }
 
             var interval = TimeSpan.FromSeconds(config.StorageCheckIntervalActive);
-            _monitoringTimer = new Timer(async _ => await CheckStorageAsync(), null, TimeSpan.Zero, interval);
+            _monitoringTimer = new Timer(async _ => await CheckStorageAsync().ConfigureAwait(false), null, TimeSpan.Zero, interval);
             _logger.LogInformation("Storage manager started with {Interval}s check interval", interval.TotalSeconds);
         }
 
         /// <inheritdoc />
-        public void Stop()
+        public void StopMonitoring()
         {
             _monitoringTimer?.Dispose();
             _monitoringTimer = null;
@@ -100,7 +100,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
         /// <inheritdoc />
         public async Task<IList<VolumeStatus>> GetAllVolumesStatusAsync()
         {
-            await _lock.WaitAsync();
+            await _lock.WaitAsync().ConfigureAwait(false);
             try
             {
                 return _volumeStatuses.ToList();
@@ -114,7 +114,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
         /// <inheritdoc />
         public async Task<bool> HasSufficientSpaceAsync(long requiredBytes)
         {
-            await CheckStorageAsync();
+            await CheckStorageAsync().ConfigureAwait(false);
             return StagingVolumeAvailableBytes >= requiredBytes && !IsStorageCritical;
         }
 
@@ -159,7 +159,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                         }
                     }
                 }
-            });
+            }).ConfigureAwait(false);
 
             return (filesDeleted, bytesFreed);
         }
@@ -203,14 +203,14 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                         _logger.LogError(ex, "Failed to delete old directory {Directory}", dir);
                     }
                 }
-            });
+            }).ConfigureAwait(false);
 
             return (filesDeleted, bytesFreed);
         }
 
         private async Task CheckStorageAsync()
         {
-            await _lock.WaitAsync();
+            await _lock.WaitAsync().ConfigureAwait(false);
             try
             {
                 var config = TorrentDownloaderPlugin.Instance?.Configuration;

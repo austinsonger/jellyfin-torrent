@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.TorrentDownloader.Models;
@@ -61,11 +62,46 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<ActionResult<DownloadSummaryResponse>> CreateDownload([FromBody] CreateDownloadRequest request)
         {
+            ArgumentNullException.ThrowIfNull(request);
+            
             try
             {
+                // Validate torrent source
                 if (string.IsNullOrWhiteSpace(request.TorrentSource))
                 {
                     return BadRequest("Torrent source is required");
+                }
+
+                // Validate torrent source length (prevent resource exhaustion)
+                if (request.TorrentSource.Length > 10000)
+                {
+                    return BadRequest("Torrent source exceeds maximum length");
+                }
+
+                // Validate torrent source scheme
+                if (!request.TorrentSource.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+                {
+                    // If it's a file path, validate it securely
+                    var fullPath = Path.GetFullPath(request.TorrentSource);
+                    
+                    // Reject path traversal attempts
+                    if (fullPath.Contains("..", StringComparison.Ordinal) || 
+                        request.TorrentSource.Contains("..", StringComparison.Ordinal))
+                    {
+                        return BadRequest("Path traversal detected");
+                    }
+                    
+                    // Validate extension
+                    if (!fullPath.EndsWith(".torrent", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return BadRequest("Invalid torrent file extension");
+                    }
+                    
+                    // Verify file exists
+                    if (!System.IO.File.Exists(fullPath))
+                    {
+                        return BadRequest("Torrent file not found");
+                    }
                 }
 
                 var userId = request.UserId;
@@ -74,9 +110,9 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
                     return BadRequest("User ID is required");
                 }
 
-                _logger.LogInformation("User {UserId} creating download from {Source}", userId, request.TorrentSource);
+                _logger.LogInformation("User {UserId} creating download from source", userId);
 
-                var download = await _downloadManager.CreateDownloadAsync(request.TorrentSource, userId);
+                var download = await _downloadManager.CreateDownloadAsync(request.TorrentSource, userId).ConfigureAwait(false);
                 
                 // Set target library if specified
                 if (request.TargetLibraryId.HasValue)
@@ -115,7 +151,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
                     statusFilter = parsedStatus;
                 }
 
-                var downloads = await _downloadManager.GetAllDownloadsAsync(statusFilter);
+                var downloads = await _downloadManager.GetAllDownloadsAsync(statusFilter).ConfigureAwait(false);
                 return Ok(downloads.Select(MapToSummaryResponse));
             }
             catch (Exception ex)
@@ -137,7 +173,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
         {
             try
             {
-                var download = await _downloadManager.GetDownloadAsync(id);
+                var download = await _downloadManager.GetDownloadAsync(id).ConfigureAwait(false);
                 if (download == null)
                 {
                     return NotFound();
@@ -164,7 +200,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
         {
             try
             {
-                var download = await _downloadManager.GetDownloadAsync(id);
+                var download = await _downloadManager.GetDownloadAsync(id).ConfigureAwait(false);
                 if (download == null)
                 {
                     return NotFound();
@@ -191,28 +227,41 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult> ControlDownload(Guid id, [FromBody] ControlDownloadRequest request)
         {
+            ArgumentNullException.ThrowIfNull(request);
+            
             try
             {
-                var download = await _downloadManager.GetDownloadAsync(id);
+                // Validate action
+                if (string.IsNullOrWhiteSpace(request.Action))
+                {
+                    return BadRequest("Action is required");
+                }
+
+                if (request.Action.Length > 20)
+                {
+                    return BadRequest("Invalid action");
+                }
+
+                var download = await _downloadManager.GetDownloadAsync(id).ConfigureAwait(false);
                 if (download == null)
                 {
                     return NotFound();
                 }
 
-                switch (request.Action.ToLowerInvariant())
+                switch (request.Action.ToUpperInvariant())
                 {
-                    case "pause":
-                        await _downloadManager.PauseDownloadAsync(id);
+                    case "PAUSE":
+                        await _downloadManager.PauseDownloadAsync(id).ConfigureAwait(false);
                         _logger.LogInformation("Download {DownloadId} paused", id);
                         break;
 
-                    case "resume":
-                        await _downloadManager.ResumeDownloadAsync(id);
+                    case "RESUME":
+                        await _downloadManager.ResumeDownloadAsync(id).ConfigureAwait(false);
                         _logger.LogInformation("Download {DownloadId} resumed", id);
                         break;
 
-                    case "cancel":
-                        await _downloadManager.CancelDownloadAsync(id, true);
+                    case "CANCEL":
+                        await _downloadManager.CancelDownloadAsync(id, true).ConfigureAwait(false);
                         _logger.LogInformation("Download {DownloadId} cancelled", id);
                         break;
 
@@ -242,13 +291,13 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
         {
             try
             {
-                var download = await _downloadManager.GetDownloadAsync(id);
+                var download = await _downloadManager.GetDownloadAsync(id).ConfigureAwait(false);
                 if (download == null)
                 {
                     return NotFound();
                 }
 
-                await _downloadManager.CancelDownloadAsync(id, deleteFiles);
+                await _downloadManager.CancelDownloadAsync(id, deleteFiles).ConfigureAwait(false);
                 _logger.LogInformation("Download {DownloadId} deleted", id);
 
                 return NoContent();
@@ -274,26 +323,29 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
                 {
                     return Ok(new StorageStatusResponse
                     {
-                        Volumes = new List<VolumeStatusResponse>(),
                         IsStorageCritical = false,
                         LastCheckTime = DateTime.UtcNow
                     });
                 }
 
-                var volumes = await _storageManager.GetAllVolumesStatusAsync();
+                var volumes = await _storageManager.GetAllVolumesStatusAsync().ConfigureAwait(false);
                 var response = new StorageStatusResponse
                 {
-                    Volumes = volumes.Select(v => new VolumeStatusResponse
+                    IsStorageCritical = _storageManager.IsStorageCritical,
+                    LastCheckTime = _storageManager.LastCheckTime
+                };
+                
+                foreach (var v in volumes)
+                {
+                    response.Volumes.Add(new VolumeStatusResponse
                     {
                         VolumePath = v.VolumePath,
                         AvailableBytes = v.AvailableBytes,
                         TotalBytes = v.TotalBytes,
                         Status = v.Status.ToString(),
                         IsStagingVolume = v.IsStagingVolume
-                    }).ToList(),
-                    IsStorageCritical = _storageManager.IsStorageCritical,
-                    LastCheckTime = _storageManager.LastCheckTime
-                };
+                    });
+                }
 
                 return Ok(response);
             }
@@ -316,12 +368,13 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
             {
                 if (_storageManager == null)
                 {
-                    return Ok(new CleanupResultResponse
+                    var errorResponse = new CleanupResultResponse
                     {
                         FilesDeleted = 0,
-                        BytesFreed = 0,
-                        Errors = new List<string> { "Storage manager not available" }
-                    });
+                        BytesFreed = 0
+                    };
+                    errorResponse.Errors.Add("Storage manager not available");
+                    return Ok(errorResponse);
                 }
 
                 var config = TorrentDownloaderPlugin.Instance?.Configuration;
@@ -330,21 +383,20 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
                     return BadRequest("Plugin configuration not available");
                 }
 
-                var downloads = await _downloadManager.GetAllDownloadsAsync();
+                var downloads = await _downloadManager.GetAllDownloadsAsync().ConfigureAwait(false);
                 var validIds = downloads.Select(d => d.DownloadId).ToList();
 
                 // Cleanup orphaned files
-                var (orphanedFiles, orphanedBytes) = await _storageManager.CleanupOrphanedFilesAsync(validIds);
+                var (orphanedFiles, orphanedBytes) = await _storageManager.CleanupOrphanedFilesAsync(validIds).ConfigureAwait(false);
 
                 // Cleanup old downloads
                 var retentionDate = DateTime.UtcNow.AddDays(-config.CleanupRetentionDays);
-                var (oldFiles, oldBytes) = await _storageManager.CleanupOldDownloadsAsync(retentionDate);
+                var (oldFiles, oldBytes) = await _storageManager.CleanupOldDownloadsAsync(retentionDate).ConfigureAwait(false);
 
                 var response = new CleanupResultResponse
                 {
                     FilesDeleted = orphanedFiles + oldFiles,
-                    BytesFreed = orphanedBytes + oldBytes,
-                    Errors = new List<string>()
+                    BytesFreed = orphanedBytes + oldBytes
                 };
 
                 _logger.LogInformation("Cleanup completed: {Files} files deleted, {Bytes} bytes freed",
@@ -370,12 +422,24 @@ namespace Jellyfin.Plugin.TorrentDownloader.Controllers
             try
             {
                 var virtualFolders = _libraryManager.GetVirtualFolders();
-                var libraries = virtualFolders.Select(vf => new LibraryInfoResponse
+                var libraries = virtualFolders.Select(vf =>
                 {
-                    Id = string.IsNullOrEmpty(vf.ItemId) ? Guid.Empty : Guid.Parse(vf.ItemId),
-                    Name = vf.Name ?? string.Empty,
-                    CollectionType = vf.CollectionType?.ToString() ?? string.Empty,
-                    Paths = vf.Locations?.ToList() ?? new List<string>()
+                    var lib = new LibraryInfoResponse
+                    {
+                        Id = string.IsNullOrEmpty(vf.ItemId) ? Guid.Empty : Guid.Parse(vf.ItemId),
+                        Name = vf.Name ?? string.Empty,
+                        CollectionType = vf.CollectionType?.ToString() ?? string.Empty
+                    };
+                    
+                    if (vf.Locations != null)
+                    {
+                        foreach (var location in vf.Locations)
+                        {
+                            lib.Paths.Add(location);
+                        }
+                    }
+                    
+                    return lib;
                 }).ToList();
 
                 return Ok(libraries);

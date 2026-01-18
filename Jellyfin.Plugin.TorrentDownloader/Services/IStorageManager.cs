@@ -65,6 +65,6 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
         /// <summary>
         /// Stops the storage monitoring service.
         /// </summary>
-        void Stop();
+        void StopMonitoring();
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -89,7 +90,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                         var delay = retryDelay * (int)Math.Pow(2, retryCount - 1);
                         _logger.LogInformation("Retry {Retry}/{Max} for import {DownloadId}, waiting {Delay}s",
                             retryCount, maxRetries, download.DownloadId, delay);
-                        await Task.Delay(TimeSpan.FromSeconds(delay));
+                        await Task.Delay(TimeSpan.FromSeconds(delay)).ConfigureAwait(false);
                     }
 
                     // Detect media type
@@ -98,7 +99,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                         mediaType, download.DownloadId);
 
                     // Select target library
-                    var targetLibrary = await SelectTargetLibraryAsync(download, mediaType);
+                    var targetLibrary = await SelectTargetLibraryAsync(download, mediaType).ConfigureAwait(false);
                     if (targetLibrary == null)
                     {
                         _logger.LogWarning("No suitable library found for download {DownloadId}, media type {MediaType}",
@@ -119,7 +120,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
 
                     // Check storage on target volume
                     var stagingSize = GetDirectorySize(download.StagingPath);
-                    if (!await _storageManager.HasSufficientSpaceAsync(stagingSize))
+                    if (!await _storageManager.HasSufficientSpaceAsync(stagingSize).ConfigureAwait(false))
                     {
                         _logger.LogError("Insufficient storage space for import {DownloadId}, required {Bytes} bytes",
                             download.DownloadId, stagingSize);
@@ -127,12 +128,12 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                     }
 
                     // Move files
-                    await MoveFilesAsync(download.StagingPath, targetPath);
+                    await MoveFilesAsync(download.StagingPath, targetPath).ConfigureAwait(false);
                     _logger.LogInformation("Successfully moved files from {Source} to {Target}",
                         download.StagingPath, targetPath);
 
                     // Trigger library scan
-                    await TriggerLibraryScanAsync(targetLibrary);
+                    await TriggerLibraryScanAsync(targetLibrary).ConfigureAwait(false);
 
                     // Cleanup staging if configured
                     if (config.RemoveAfterImport)
@@ -265,7 +266,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                 _logger.LogError(ex, "Error selecting target library");
             }
 
-            return await Task.FromResult<BaseItem?>(null);
+            return null;
         }
 
         private string GetTargetPath(BaseItem library, DownloadEntry download)
@@ -306,21 +307,21 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                 // Handle collision
                 if (Directory.Exists(targetPath))
                 {
-                    var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+                    var timestamp = DateTime.UtcNow.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
                     targetPath = $"{targetPath}_{timestamp}";
                     _logger.LogWarning("Target path exists, using timestamped path: {Path}", targetPath);
                 }
 
                 // Move directory
                 Directory.Move(sourcePath, targetPath);
-            });
+            }).ConfigureAwait(false);
         }
 
         private async Task TriggerLibraryScanAsync(BaseItem library)
         {
             try
             {
-                await _libraryManager.ValidateMediaLibrary(new Progress<double>(), CancellationToken.None);
+                await _libraryManager.ValidateMediaLibrary(new Progress<double>(), CancellationToken.None).ConfigureAwait(false);
                 _logger.LogInformation("Triggered library scan for library {LibraryName}", library.Name);
             }
             catch (Exception ex)

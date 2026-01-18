@@ -18,8 +18,8 @@ A Jellyfin plugin that enables torrent downloading functionality directly within
 
 ## Requirements
 
-- Jellyfin Server 10.8.x or later
-- .NET 8.0 Runtime
+- Jellyfin Server 10.11.x or later
+- .NET 9.0 Runtime
 - Sufficient disk space for staging directory
 - Network firewall configured to allow torrent traffic (default port: 6881)
 

@@ -73,19 +73,25 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                 {
                     MaximumDownloadRate = config.MaxDownloadSpeed > 0 ? (int)config.MaxDownloadSpeed : 0,
                     MaximumUploadRate = config.MaxUploadSpeed > 0 ? (int)config.MaxUploadSpeed : 0,
-                    AllowPortForwarding = true
+                    AllowPortForwarding = true,
+                    AllowLocalPeerDiscovery = true,
                 };
                 settingBuilder.ListenEndPoints.Add("ipv4", new IPEndPoint(IPAddress.Any, config.ListenPort));
 
                 _engineSettings = settingBuilder.ToSettings();
                 _engine = new ClientEngine(_engineSettings);
 
-                if (config.EnableDHT)
-                {
-                    _logger.LogInformation("DHT engine enabled on port {Port}", config.ListenPort);
-                }
-
-                _logger.LogInformation("Torrent engine initialized successfully");
+                _logger.LogInformation(
+                    "Torrent engine initialized successfully - Port: {Port}, DHT: {DHT}, PEX: {PEX}, Encryption: {Encryption}",
+                    config.ListenPort,
+                    config.EnableDHT,
+                    config.EnablePEX,
+                    config.EnableEncryption);
+                
+                // Note: In MonoTorrent 3.0.2, DHT and PEX are enabled via TorrentSettings per torrent
+                // Encryption settings are handled automatically by the engine
+                
+                await Task.CompletedTask.ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -97,6 +103,10 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
         /// <inheritdoc />
         public async Task StartDownloadAsync(DownloadEntry downloadEntry)
         {
+            ArgumentNullException.ThrowIfNull(downloadEntry);
+            
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
             try
             {
                 if (_engine == null)
@@ -106,22 +116,31 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
 
                 _logger.LogInformation("Starting download for {Name}", downloadEntry.DisplayName);
 
+                var config = TorrentDownloaderPlugin.Instance?.Configuration;
+                if (config == null)
+                {
+                    throw new InvalidOperationException("Plugin configuration not available");
+                }
+
+                // Create torrent settings with configuration
+                // Note: PEX and DHT are managed by MonoTorrent automatically in 3.0.2
+                var torrentSettings = new TorrentSettingsBuilder
+                {
+                    AllowInitialSeeding = false,
+                    MaximumConnections = 60
+                }.ToSettings();
+
                 // Parse torrent source and create manager
                 TorrentManager manager;
                 if (downloadEntry.TorrentSource.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
                 {
                     var magnetLink = MagnetLink.Parse(downloadEntry.TorrentSource);
-                    manager = await _engine.AddStreamingAsync(magnetLink, downloadEntry.StagingPath);
+                    manager = await _engine.AddStreamingAsync(magnetLink, downloadEntry.StagingPath, torrentSettings).ConfigureAwait(false);
                 }
                 else
                 {
-                    var torrent = await Torrent.LoadAsync(downloadEntry.TorrentSource);
-                    var torrentSettings = new TorrentSettingsBuilder
-                    {
-                        AllowInitialSeeding = false,
-                        MaximumConnections = 60
-                    }.ToSettings();
-                    manager = await _engine.AddAsync(torrent, downloadEntry.StagingPath, torrentSettings);
+                    var torrent = await Torrent.LoadAsync(downloadEntry.TorrentSource).ConfigureAwait(false);
+                    manager = await _engine.AddAsync(torrent, downloadEntry.StagingPath, torrentSettings).ConfigureAwait(false);
                 }
                 
                 lock (_lock)
@@ -130,12 +149,12 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                 }
 
                 // Start download
-                await manager.StartAsync();
+                await manager.StartAsync().ConfigureAwait(false);
 
                 _logger.LogInformation(
                     "Download started: {Name}, InfoHash: {Hash}",
                     downloadEntry.DisplayName,
-                    manager.InfoHashes.V1.ToHex());
+                    manager.InfoHashes.V1?.ToHex() ?? "unknown");
             }
             catch (Exception ex)
             {
@@ -147,6 +166,8 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
         /// <inheritdoc />
         public async Task PauseDownloadAsync(Guid downloadId)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
             try
             {
                 var manager = GetTorrentManager(downloadId);
@@ -166,6 +187,8 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
         /// <inheritdoc />
         public async Task ResumeDownloadAsync(Guid downloadId)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
             try
             {
                 var manager = GetTorrentManager(downloadId);
@@ -185,6 +208,8 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
         /// <inheritdoc />
         public async Task StopDownloadAsync(Guid downloadId, bool deleteFiles)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
             try
             {
                 var manager = GetTorrentManager(downloadId);
@@ -220,6 +245,8 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
         /// <inheritdoc />
         public Task<DownloadEntry?> GetDownloadProgressAsync(Guid downloadId)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
             try
             {
                 var manager = GetTorrentManager(downloadId);
@@ -232,13 +259,13 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                 {
                     DownloadId = downloadId,
                     TotalSize = manager.Torrent?.Size ?? 0,
-                    DownloadedSize = manager.Monitor.DataBytesDownloaded,
+                    DownloadedSize = manager.Monitor.DataBytesReceived,
                     ProgressPercent = (decimal)manager.Progress,
-                    DownloadSpeed = manager.Monitor.DownloadSpeed,
-                    UploadSpeed = manager.Monitor.UploadSpeed,
+                    DownloadSpeed = manager.Monitor.DownloadRate,
+                    UploadSpeed = manager.Monitor.UploadRate,
                     PeerCount = manager.OpenConnections,
                     DisplayName = manager.Torrent?.Name ?? "Unknown",
-                    InfoHash = manager.InfoHashes.V1.ToHex()
+                    InfoHash = manager.InfoHashes.V1?.ToHex() ?? "unknown"
                 };
 
                 // Calculate ETA

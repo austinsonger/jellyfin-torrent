@@ -21,12 +21,12 @@ namespace Jellyfin.Plugin.TorrentDownloader.Configuration
         /// <summary>
         /// Gets or sets the global download speed limit in bytes per second (0 = unlimited).
         /// </summary>
-        public long MaxDownloadSpeed { get; set; } = 0;
+        public long MaxDownloadSpeed { get; set; }
 
         /// <summary>
         /// Gets or sets the global upload speed limit in bytes per second (0 = unlimited).
         /// </summary>
-        public long MaxUploadSpeed { get; set; } = 0;
+        public long MaxUploadSpeed { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether DHT is enabled for trackerless torrents.
@@ -51,7 +51,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Configuration
         /// <summary>
         /// Gets or sets a value indicating whether files should be deleted from staging after successful import.
         /// </summary>
-        public bool RemoveAfterImport { get; set; } = false;
+        public bool RemoveAfterImport { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether automatic import is enabled.
@@ -96,7 +96,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Configuration
         /// <summary>
         /// Gets or sets the default library ID for imports when type detection fails.
         /// </summary>
-        public Guid? DefaultLibraryId { get; set; } = null;
+        public Guid? DefaultLibraryId { get; set; }
 
         /// <summary>
         /// Gets or sets the retention period in days for completed downloads before cleanup.
@@ -106,6 +106,6 @@ namespace Jellyfin.Plugin.TorrentDownloader.Configuration
         /// <summary>
         /// Gets or sets a value indicating whether automatic cleanup of old downloads is enabled.
         /// </summary>
-        public bool EnableAutomaticCleanup { get; set; } = false;
+        public bool EnableAutomaticCleanup { get; set; }
     }
 }

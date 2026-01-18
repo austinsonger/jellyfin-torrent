@@ -119,7 +119,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Models.Dto
         /// <summary>
         /// Gets or sets the list of trackers.
         /// </summary>
-        public string[]? Trackers { get; set; }
+        public IReadOnlyList<string>? Trackers { get; set; }
 
         /// <summary>
         /// Gets or sets the staging path.
@@ -153,9 +153,9 @@ namespace Jellyfin.Plugin.TorrentDownloader.Models.Dto
     public class StorageStatusResponse
     {
         /// <summary>
-        /// Gets or sets the list of volume statuses.
+        /// Gets the list of volume statuses.
         /// </summary>
-        public List<VolumeStatusResponse> Volumes { get; set; } = new List<VolumeStatusResponse>();
+        public List<VolumeStatusResponse> Volumes { get; } = new List<VolumeStatusResponse>();
 
         /// <summary>
         /// Gets or sets a value indicating whether any volume is critical.
@@ -215,9 +215,9 @@ namespace Jellyfin.Plugin.TorrentDownloader.Models.Dto
         public long BytesFreed { get; set; }
 
         /// <summary>
-        /// Gets or sets the list of errors encountered.
+        /// Gets the list of errors encountered.
         /// </summary>
-        public List<string> Errors { get; set; } = new List<string>();
+        public List<string> Errors { get; } = new List<string>();
     }
 
     /// <summary>
@@ -241,8 +241,8 @@ namespace Jellyfin.Plugin.TorrentDownloader.Models.Dto
         public string? CollectionType { get; set; }
 
         /// <summary>
-        /// Gets or sets the library paths.
+        /// Gets the library paths.
         /// </summary>
-        public List<string> Paths { get; set; } = new List<string>();
+        public List<string> Paths { get; } = new List<string>();
     }
 }

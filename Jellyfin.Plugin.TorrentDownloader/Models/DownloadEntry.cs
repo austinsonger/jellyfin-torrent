@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Jellyfin.Plugin.TorrentDownloader.Models
 {
@@ -100,7 +101,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Models
         /// <summary>
         /// Gets or sets the list of trackers.
         /// </summary>
-        public string[]? Trackers { get; set; }
+        public IReadOnlyList<string>? Trackers { get; set; }
 
         /// <summary>
         /// Gets or sets the estimated time remaining in seconds.
