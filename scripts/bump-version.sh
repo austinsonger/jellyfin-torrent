@@ -177,7 +177,7 @@ echo -e "${GREEN}New version: $NEW_VERSION${NC}"
 if [[ "$DRY_RUN" == true ]]; then
     echo -e "${YELLOW}[DRY RUN] Would update:${NC}"
     echo "  - $CSPROJ_FILE: $CURRENT_VERSION -> $NEW_VERSION"
-    echo "  - $MANIFEST_FILE: version fields -> $NEW_VERSION"
+    echo "  - $MANIFEST_FILE: version and URL fields -> $NEW_VERSION"
     exit 0
 fi
 
@@ -204,7 +204,8 @@ TEMP_MANIFEST="${MANIFEST_FILE}.tmp"
 
 jq --arg newver "$NEW_VERSION" '
   .version = $newver |
-  .versions[].version = $newver
+  .versions[].version = $newver |
+  .versions[].sourceUrl |= gsub("v[0-9]+\\.[0-9]+\\.[0-9]+(\\.[0-9]+)?"; "v" + $newver)
 ' "$MANIFEST_FILE" > "$TEMP_MANIFEST"
 
 mv "$TEMP_MANIFEST" "$MANIFEST_FILE"
