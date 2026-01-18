@@ -218,8 +218,8 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                 if (mediaType == "video")
                 {
                     var videoFolder = virtualFolders.FirstOrDefault(f =>
-                        f.CollectionType == MediaBrowser.Model.Entities.CollectionTypeOptions.Movies ||
-                        f.CollectionType == MediaBrowser.Model.Entities.CollectionTypeOptions.TvShows);
+                        string.Equals(f.CollectionType?.ToString(), "movies", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(f.CollectionType?.ToString(), "tvshows", StringComparison.OrdinalIgnoreCase));
 
                     if (videoFolder != null && videoFolder.ItemId != null)
                     {
@@ -229,7 +229,7 @@ namespace Jellyfin.Plugin.TorrentDownloader.Services
                 else if (mediaType == "audio")
                 {
                     var audioFolder = virtualFolders.FirstOrDefault(f =>
-                        f.CollectionType == MediaBrowser.Model.Entities.CollectionTypeOptions.Music);
+                        string.Equals(f.CollectionType?.ToString(), "music", StringComparison.OrdinalIgnoreCase));
 
                     if (audioFolder != null && audioFolder.ItemId != null)
                     {
